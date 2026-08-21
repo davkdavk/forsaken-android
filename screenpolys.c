@@ -2025,6 +2025,13 @@ void AddScrPolyToTPage( u_int16_t i, int16_t TPage )
 {
 	if( TPage == -1 ) TPage = MAXTPAGESPERTLOAD;
 
+	/* If this poly is already the head of this TPage, re-inserting it would
+	 * make NextInTPage point at itself -> cycle -> infinite traversal. */
+	if( ScrPolyTPages[ TPage ].FirstPoly == i )
+	{
+		return;
+	}
+
 	ScrPolys[ i ].PrevInTPage = (u_int16_t) -1;
 	ScrPolys[ i ].NextInTPage = ScrPolyTPages[ TPage ].FirstPoly;
 
@@ -2072,8 +2079,10 @@ bool DisplaySolidScrPolys( RENDEROBJECT *renderObject )
 	TPage = 0;
 	i = ScrPolyTPages[ 0 ].FirstPoly;
 
+	int __it = 0;
 	while( 1 )
 	{
+		if( ++__it > 256 ) return true; /* safety: malformed tpage list */
  		if( !ScrPolyDispSolid( renderObject, &TPage, &i ) )
 			return( true );
 
@@ -2096,8 +2105,10 @@ bool DisplayNonSolidScrPolys( RENDEROBJECT *renderObject )
 	TPage = 0;
 	i = ScrPolyTPages[ 0 ].FirstPoly;
 
+	int __it = 0;
 	while( 1 )
 	{
+		if( ++__it > 256 ) return true; /* safety: malformed tpage list */
  		if( !ScrPolyDispNonSolid( renderObject, &TPage, &i ) )
 			return( true );
 
@@ -2162,6 +2173,7 @@ bool ScrPolyDispSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t * 
 		if( Count == *TPage ) i = *NextScrPoly;
 		else i = ScrPolyTPages[ Count ].FirstPoly;
 
+		int __walk = 0;
 		while( ( i != (u_int16_t) -1 ) && ( ( StartVert + NumVerts ) < MAXSCREENPOLYVERTS ) )
 		{
 			if( ScrPolys[ i ].Flags & SCRFLAG_Solid )
@@ -2183,6 +2195,11 @@ bool ScrPolyDispSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t * 
 			}
 			
 			i = ScrPolys[ i ].NextInTPage;
+			if( ++__walk > MAXNUMOFSCRPOLYS )
+			{
+				i = (u_int16_t) -1;
+				break;
+			}
 		}
 
 		ScrPolyTPages[ Count ].StartVert = StartVert;
@@ -2247,6 +2264,7 @@ bool ScrPolyDispSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t * 
 			if( Count == *TPage ) i = *NextScrPoly;
 			else i = ScrPolyTPages[ Count ].FirstPoly;
 	
+			int __fwalk = 0;
 			while( ( i != (u_int16_t) -1 ) && ( StartVert < MAXSCREENPOLYVERTS ) )
 			{
 				if( ScrPolys[ i ].Flags & SCRFLAG_Solid )
@@ -2564,6 +2582,11 @@ bool ScrPolyDispSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t * 
 				}
 		
 				i = ScrPolys[ i ].NextInTPage;
+				if( ++__fwalk > MAXNUMOFSCRPOLYS )
+				{
+					i = (u_int16_t) -1;
+					break;
+				}
 			}
 		}
 
@@ -2641,6 +2664,7 @@ bool ScrPolyDispNonSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t
 		if( Count == *TPage ) i = *NextScrPoly;
 		else i = ScrPolyTPages[ Count ].FirstPoly;
 
+		int __walk = 0;
 		while( ( i != (u_int16_t) -1 ) && ( ( StartVert + NumVerts ) < MAXSCREENPOLYVERTS ) )
 		{
 			if( !( ScrPolys[ i ].Flags & SCRFLAG_Solid ) )
@@ -2662,6 +2686,11 @@ bool ScrPolyDispNonSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t
 			}
 			
 			i = ScrPolys[ i ].NextInTPage;
+			if( ++__walk > MAXNUMOFSCRPOLYS )
+			{
+				i = (u_int16_t) -1;
+				break;
+			}
 		}
 
 		ScrPolyTPages[ Count ].StartVert = StartVert;
@@ -2744,6 +2773,7 @@ bool ScrPolyDispNonSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t
 			if( Count == *TPage ) i = *NextScrPoly;
 			else i = ScrPolyTPages[ Count ].FirstPoly;
 	
+			int __fwalk = 0;
 			while( ( i != (u_int16_t) -1 ) && ( i < MAXNUMOFSCRPOLYS ) && ( StartVert < MAXSCREENPOLYVERTS ) )
 			{
 				if( !( ScrPolys[ i ].Flags & SCRFLAG_Solid ) )
@@ -3079,6 +3109,11 @@ bool ScrPolyDispNonSolid( RENDEROBJECT *renderObject, int16_t * TPage, u_int16_t
 				}
 		
 				i = ScrPolys[ i ].NextInTPage;
+				if( ++__fwalk > MAXNUMOFSCRPOLYS )
+				{
+					i = (u_int16_t) -1;
+					break;
+				}
 			}
 
 	   		//lpPointer = ( LPVOID ) ScrPolyFacePnt;

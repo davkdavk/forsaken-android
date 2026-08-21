@@ -25,6 +25,8 @@
 #include "input.h"
 #include "controls.h"
 #include "config.h"
+#include <android/log.h>
+#include <stdbool.h>
 #include "title.h"
 #include "multiplayer.h"
 #include "2dtextures.h"
@@ -1095,7 +1097,7 @@ MENU	MENU_NEW_StartSinglePlayer = {
 			(void *)SelectedLevel, NULL, InitLevelSelectVDU, DrawFlatMenuName, NULL, 0 } ,
 
 		{ 0, 200, 200, 50, 0,
-			LT_MENU_NEW_StartSinglePlayer1/*"start"*/, FONT_Large, TEXTFLAG_CentreX | TEXTFLAG_CentreY,
+			LT_MENU_NEW_StartSinglePlayer1/*"start"*/, FONT_Large, TEXTFLAG_CentreX | TEXTFLAG_CentreY | TEXTFLAG_AutoSelect,
 			NULL, &MENU_NEW_BetweenLevels, MenuChange, DrawFlatMenuItem, NULL, 0 } ,
 
 		{ -1, -1, 0, 0, 0, "", 0, 0,  NULL, NULL, NULL, NULL, NULL, 0 }
@@ -4803,7 +4805,8 @@ void ScaleHoloModel( float scale );
 void ShowHoloModel( u_int16_t model );
 void ProcessHoloModel( void );
 
-u_int8_t QuickStart = QUICKSTART_None; 
+u_int8_t QuickStart = QUICKSTART_None;
+extern char WarpLevel[128]; extern bool DoWarp; 
 
 bool RenderCurrentMenu(void) // this renders broken main menu
 {
@@ -4893,7 +4896,6 @@ Display Non 0 Clipped Non Faceme Transluecent Polys
 /*===================================================================
 	Display Transluecent Screen Polys
 ===================================================================*/
-
 		if( !DisplayNonSolidScrPolys( &RenderBufs[ 3 ] ) )
 			return false;
 
@@ -4906,7 +4908,6 @@ Display Non 0 Clipped Non Faceme Transluecent Polys
 /*===================================================================
 	Display Solid Screen Polys
 ===================================================================*/
-
 	if( !DisplaySolidScrPolys( &RenderBufs[ 3 ] ) )
 		return false;
 
@@ -12275,7 +12276,11 @@ void PrintTextItem (TEXTINFO *TextInfo)
 	TEXTINFO_currenty = 0.0F;	
 	TEXTINFO_currentheight = 0.0F;
 	TextInfo->num_lines = 1;
-	TextInfo->char1x = 999.0F;
+	/* char1x is a running minimum over each glyph's xpos. The old 999.0F
+	 * seed assumed low-res coords; at 1920x1080 ModeScaleX is 6.0 and
+	 * xpos exceeds 999, so the reduction never fired and the highlight
+	 * box anchored left of the text. Seed with the framebuffer width. */
+	TextInfo->char1x = (float)render_info.window_size.cx;
 
 	StartPos = 0;
 	TEXTINFO_currentendpoint = 0;
@@ -12398,7 +12403,6 @@ void ProcessTextItems (void)
 	  		if (!Plot2dBox (TextStack[i]))
 	  			Msg( "Plot2dBox() : failed\n" );
 		}
-		
 		DisplayTextItem (TextStack[i]);
 
 		// do not do sfx for instant text
@@ -13838,6 +13842,7 @@ u_int16_t PlotHighlightPoly (float xmin, float ymin, float xmax, float ymax, u_i
 	u_int16_t poly;
 	
 	poly =FindFreeScrPoly();
+	if(poly==(u_int16_t)-1) return poly;
 
 	ScrPolys[poly].Flags = SCRFLAG_UseCoords;
 	ScrPolys[poly].Type = SCRTYPE_LastAFrame;
@@ -17068,6 +17073,7 @@ void MenuProcess()
 			default:
 				InTitleRoom = false;
 		}
+
 
 		// no menu processing done while loading...
 		switch ( MyGameStatus )
