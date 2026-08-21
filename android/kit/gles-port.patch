@@ -1,0 +1,299 @@
+diff --git a/main_sdl.c b/main_sdl.c
+index 2fa3292..d944ce0 100644
+--- a/main_sdl.c
++++ b/main_sdl.c
+@@ -138,7 +138,13 @@ static void set_opengl_settings( void )
+ 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER,	  1);
+ 
+ #if SDL_VERSION_ATLEAST(2,0,0)
+-#if GL == 3
++#ifdef RENDER_GLES
++	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
++	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
++	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
++	// GLES may default to a 16 bit depth buffer -> z fighting; ask for 24
++	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
++#elif GL == 3
+ 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+ 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+ 	// TODO - this isn't only mac osx specific is it ?
+diff --git a/render_gl3.c b/render_gl3.c
+index f36ae6d..e370d74 100644
+--- a/render_gl3.c
++++ b/render_gl3.c
+@@ -46,6 +46,18 @@ bool FSCreateDynamicIndexBuffer(RENDEROBJECT *renderObject, int numIndices)
+ static GLuint old_array_buf = 0;
+ static GLuint old_index_buf = 0;
+ 
++#ifdef RENDER_GLES
++// GLES3 has no glMapBuffer; emulate a whole-buffer write mapping
++static void * map_buffer_write( GLenum target )
++{
++	GLint size = 0;
++	glGetBufferParameteriv( target, GL_BUFFER_SIZE, &size );
++	return glMapBufferRange( target, 0, size, GL_MAP_WRITE_BIT );
++}
++#else
++#define map_buffer_write( target ) glMapBuffer( target, GL_WRITE_ONLY )
++#endif
++
+ bool FSLockVertexBuffer(RENDEROBJECT *renderObject, LVERTEX **verts)
+ {
+ 	if ( old_array_buf )
+@@ -55,7 +67,7 @@ bool FSLockVertexBuffer(RENDEROBJECT *renderObject, LVERTEX **verts)
+ 	}
+ 	glGetIntegerv( GL_ARRAY_BUFFER_BINDING, &old_array_buf );
+ 	glBindBuffer( GL_ARRAY_BUFFER, (GLuint) renderObject->lpVertexBuffer );
+-	*verts = (LVERTEX *) glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY );
++	*verts = (LVERTEX *) map_buffer_write( GL_ARRAY_BUFFER );
+ 	if(!*verts)
+ 	{
+ 		DebugPrintf("FSLockVertexBuffer: glMapBuffer returned NULL\n");
+@@ -83,7 +95,7 @@ bool FSLockNormalBuffer(RENDEROBJECT *renderObject, NORMAL **normals)
+ 	}
+ 	glGetIntegerv( GL_ARRAY_BUFFER_BINDING, &old_array_buf );
+ 	glBindBuffer( GL_ARRAY_BUFFER, (GLuint) renderObject->lpNormalBuffer );
+-	*normals = (NORMAL *) glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY );
++	*normals = (NORMAL *) map_buffer_write( GL_ARRAY_BUFFER );
+ 	if(!*normals)
+ 	{
+ 		DebugPrintf("FSLockNormalBuffer: glMapBuffer returned NULL\n");
+@@ -111,7 +123,7 @@ bool FSLockIndexBuffer(RENDEROBJECT *renderObject, WORD **indices)
+ 	}
+ 	glGetIntegerv( GL_ELEMENT_ARRAY_BUFFER_BINDING, &old_index_buf );
+ 	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint) renderObject->lpIndexBuffer );
+-	*indices = (WORD *) glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY );
++	*indices = (WORD *) map_buffer_write( GL_ELEMENT_ARRAY_BUFFER );
+ 	if(!*indices)
+ 	{
+ 		DebugPrintf("FSLockIndexBuffer: glMapBuffer returned NULL\n");
+@@ -200,37 +212,46 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
+ 
+ 	// Tell OpenGL about the buffer data layout
+ 	// see the LVERTEX and TLVERTEX definitions inside include/new3d.h
++	// base_vertex shifts the attribute base so indices can stay relative
++	// (used to emulate glDrawElementsBaseVertex on GLES < 3.2)
+ 	attr = orthographic ? ortho_attr : normal_attr;
+-	for ( i=0; attr[i].name; i++ )
+ 	{
+-		loc = glGetAttribLocation( current_program, attr[i].name );
+-		if (loc >= 0)
+-		{
+-			glVertexAttribPointer(
+-				loc,
+-				attr[i].components,
+-				attr[i].type,
+-				attr[i].normalized,
+-				orthographic ? sizeof(TLVERTEX) : sizeof(LVERTEX),
+-				attr[i].offset
+-			);
+-			glEnableVertexAttribArray( loc );
+-		}
+-	}
+-
+-	CHECK_GL_ERRORS;
+-
+-	// tell it about the normal buffer
+-	if ( renderObject->lpNormalBuffer )
+-	{
+-		glBindBuffer( GL_ARRAY_BUFFER, renderObject->lpNormalBuffer );
+-		loc = glGetAttribLocation( current_program, "vnormal" );
+-		if (loc >= 0)
+-		{
+-			glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, sizeof(NORMAL), 0 );
+-			glEnableVertexAttribArray( loc );
+-		}
+-	}
++		size_t stride = orthographic ? sizeof(TLVERTEX) : sizeof(LVERTEX);
++		size_t base = 0;
++#define SETUP_ATTRIBS( base_vertex ) \
++	do { \
++		base = (size_t)(base_vertex); \
++		glBindBuffer( GL_ARRAY_BUFFER, (GLuint)(size_t) renderObject->lpVertexBuffer ); \
++		for ( i=0; attr[i].name; i++ ) \
++		{ \
++			loc = glGetAttribLocation( current_program, attr[i].name ); \
++			if (loc >= 0) \
++			{ \
++				glVertexAttribPointer( \
++					loc, \
++					attr[i].components, \
++					attr[i].type, \
++					attr[i].normalized, \
++					stride, \
++					(const GLvoid *)( base * stride + (size_t) attr[i].offset ) \
++				); \
++				glEnableVertexAttribArray( loc ); \
++			} \
++		} \
++		if ( renderObject->lpNormalBuffer ) \
++		{ \
++			glBindBuffer( GL_ARRAY_BUFFER, (GLuint)(size_t) renderObject->lpNormalBuffer ); \
++			loc = glGetAttribLocation( current_program, "vnormal" ); \
++			if (loc >= 0) \
++			{ \
++				glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, sizeof(NORMAL), \
++					(const GLvoid *)( base * sizeof(NORMAL) ) ); \
++				glEnableVertexAttribArray( loc ); \
++			} \
++		} \
++	} while (0)
++
++	SETUP_ATTRIBS( 0 );
+ 
+ 	CHECK_GL_ERRORS;
+ 
+@@ -258,8 +279,18 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
+ 				glBindTexture( GL_TEXTURE_2D, texdata->id );
+ 			}
+ 		}
++#ifdef RENDER_GLES
++		// emulate BaseVertex: rebase the attribute pointers instead
++		if ( (size_t) group->startVert != base )
++			SETUP_ATTRIBS( group->startVert );
++		glDrawElements( primitive_type, group->numTriangles * 3, GL_UNSIGNED_SHORT,
++			(const GLvoid *)( (size_t) group->startIndex * sizeof(WORD) ) );
++#else
+ 		glDrawElementsBaseVertex( primitive_type, group->numTriangles * 3, GL_UNSIGNED_SHORT, group->startIndex * sizeof(WORD), group->startVert );
++#endif
+ 	}
++	} // stride/base scope
++#undef SETUP_ATTRIBS
+ 
+ 	CHECK_GL_ERRORS;
+ 
+diff --git a/render_gl_shared.c b/render_gl_shared.c
+index bdca529..2a2cb9e 100644
+--- a/render_gl_shared.c
++++ b/render_gl_shared.c
+@@ -43,6 +43,18 @@ const char * render_error_description( int e )
+ 
+ // poly modes
+ 
++#ifdef RENDER_GLES
++// GLES has no glPolygonMode; wireframe/points debug modes are unavailable
++void render_mode_wireframe(void)
++{
++	DebugPrintf("render_mode_wireframe: not supported on GLES\n");
++}
++void render_mode_points(void)
++{
++	DebugPrintf("render_mode_points: not supported on GLES\n");
++}
++void render_mode_fill(void) {}
++#else
+ void render_mode_wireframe(void)
+ {
+ 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+@@ -57,6 +69,7 @@ void render_mode_fill(void)
+ {
+ 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+ }
++#endif // RENDER_GLES
+ 
+ // unused in opengl
+ bool FSBeginScene(){ return true; }
+@@ -225,8 +238,10 @@ bool FSCreateTexture(LPTEXTURE *texture, const char *fileName, u_int16_t *width,
+ 
+ static void print_info( void )
+ {
+-	GLboolean b;
+-	glGetBooleanv(GL_STEREO,&b);
++	GLboolean b = GL_FALSE;
++#ifndef RENDER_GLES
++	glGetBooleanv(GL_STEREO,&b); // GL_STEREO does not exist in GLES
++#endif
+ 
+ 	DebugPrintf( "gl vendor='%s', renderer='%s', version='%s', shader='%s', stereo='%s'\n",
+ 		glGetString(GL_VENDOR),
+@@ -265,22 +280,32 @@ static void print_info( void )
+ //   - different vertex layout (LVERTEX vs TLVERTEX)
+ // - vertex colors are in BGRA format, not RGBA
+ 
+-#if   GL == 2
++#if   defined(RENDER_GLES)
++	#define GLSL_VERSION   "300 es"
++	#define GLSL_VERT_IN   "in"
++	#define GLSL_FRAG_IN   "in"
++	#define GLSL_FRAG_OUT  "out"
++	#define GLSL_VERT_OUT  "out"
++	#define GLSL_PRECISION "precision highp float;\n"
++#elif GL == 2
+ 	#define GLSL_VERSION   "120"
+ 	#define GLSL_VERT_IN   "attribute"
+ 	#define GLSL_VERT_OUT  "varying"
+ 	#define GLSL_FRAG_IN   "varying"
+ 	#define GLSL_FRAG_OUT  ""
++	#define GLSL_PRECISION ""
+ #elif GL >= 3
+ 	#define GLSL_VERSION   "150"
+ 	#define GLSL_VERT_IN   "in"
+ 	#define GLSL_FRAG_IN   "in"
+ 	#define GLSL_FRAG_OUT  "out"
+ 	#define GLSL_VERT_OUT  "out"
++	#define GLSL_PRECISION ""
+ #endif
+ 
+ static const char *default_vertex_shader =
+ 	"#version " GLSL_VERSION "\n"
++	GLSL_PRECISION
+ 	"\n"
+ 	"uniform bool orthographic;\n"
+ 	"\n"
+@@ -321,6 +346,7 @@ static const char *default_vertex_shader =
+ 
+ static const char *default_fragment_shader =
+ 	"#version " GLSL_VERSION "\n"
++	GLSL_PRECISION
+ 	"\n"
+ 	"uniform bool colorkeying_enabled;\n"
+ 	"uniform bool texturing_enabled;\n"
+@@ -809,7 +835,20 @@ void ortho_update ( GLuint current_program )
+ 		m._24 = -(top+bottom)/(top-bottom) + 2.0f;
+ 		m._34 = -(far+near)/(far-near);
+ 		m._44 = 1.0f;
++#ifdef RENDER_GLES
++		// transpose in C: ES drivers may reject transpose=GL_TRUE
++		{
++			float *a = (float *) &m;
++			float t[16];
++			int r, c;
++			for ( r = 0; r < 4; r++ )
++				for ( c = 0; c < 4; c++ )
++					t[c*4+r] = a[r*4+c];
++			glUniformMatrix4fv( u_ortho_matrix, 1, GL_FALSE, t );
++		}
++#else
+ 		glUniformMatrix4fv( u_ortho_matrix, 1, GL_TRUE, &m );
++#endif
+ 		CHECK_GL_ERRORS;
+ 		ortho_matrix_needs_update = false;
+ 	}
+diff --git a/render_gl_shared.h b/render_gl_shared.h
+index 980b889..bc564b1 100644
+--- a/render_gl_shared.h
++++ b/render_gl_shared.h
+@@ -13,14 +13,22 @@
+ #include "file.h"
+ #include <stdio.h>
+ #include "main_sdl.h"
++#ifdef RENDER_GLES
++#include <GLES3/gl3.h>
++#include <GLES2/gl2ext.h>
++// GLES has only the float variants of these
++#define glClearDepth glClearDepthf
++#define glDepthRange glDepthRangef
++#else
+ #include "SDL_opengl.h"
++#endif
+ 
+ extern render_info_t render_info;
+ 
+ extern GLenum render_last_gl_error;
+ 
+ // TODO invalid pointer
+-#if defined(MACOSX) && SDL_VERSION_ATLEAST(2,0,0)
++#if defined(RENDER_GLES) || (defined(MACOSX) && SDL_VERSION_ATLEAST(2,0,0))
+ #define gluErrorString(e)\
+ 	(e == 0x0500 ? "invalid enumerant" : \
+ 	(e == 0x0501 ? "invalid value" : \
