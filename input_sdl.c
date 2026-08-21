@@ -247,11 +247,18 @@ void app_keyboard( SDL_KeyboardEvent * key )
 	}
 	if( key->type == SDL_KEYDOWN )
 	{
+#if SDL_VERSION_ATLEAST(2,0,0)
+		DebugPrintf( "KEYDOWN sym=%d (0x%x) scancode=%d\n",
+			(int) key->keysym.sym, (unsigned) key->keysym.sym,
+			(int) key->keysym.scancode );
+		input_buffer_send( key->keysym.sym );
+#else
 		input_buffer_send(
 			key->keysym.unicode ? 
 				key->keysym.unicode :
 				key->keysym.sym
 		);
+#endif
 	}
 }
 
@@ -368,6 +375,8 @@ mouse_state_t* read_mouse(void)
 // Joystick Events
 //////////////////////////////////////////////
 
+int joy_slot_from_instance( int which );
+
 static int get_deadzone( int joy, int axis )
 {
 	// make sure this is a valid joystick/axis
@@ -380,8 +389,12 @@ void app_joy_axis( SDL_JoyAxisEvent * axis )
 {
 	long value;
 	int deadzone;
+	int slot = joy_slot_from_instance( axis->which );
 
-	if(axis->axis > MAX_JOYSTICK_AXIS)
+	if( slot < 0 )
+		return;
+
+	if(axis->axis >= MAX_JOYSTICK_AXIS)
 	{
 		DebugPrintf(
 			"sdl_input: ignoring joy %d axis %d > max axises\n",
@@ -394,12 +407,32 @@ void app_joy_axis( SDL_JoyAxisEvent * axis )
 	value = (long) (((float)axis->value) / 327.67f);
 
 	// get the joystick deadzone
-	deadzone = get_deadzone(axis->which,axis->axis);
+	deadzone = get_deadzone(slot,axis->axis);
 
 	// if movement greater then deadzone then apply
 	// other wise no movement at all is registered
-	joy_axis_state[ axis->which ][ axis->axis ] = 
+	joy_axis_state[ slot ][ axis->axis ] = 
 		( abs(value) > deadzone ) ? value : 0 ;
+
+	DebugPrintf("DIAG1-AXIS inst=%d slot=%d axis=%d raw=%d scaled=%ld dz=%d\n",
+		(int)axis->which, slot, (int)axis->axis, (int)axis->value, value, deadzone);
+
+	/* Xbox-style triggers are analog axes that rest at -32768 and travel to
+	 * +32767. Surface them as ordinary buttons so they can be bound through
+	 * the normal USERKEY path (half travel = pressed). */
+	if ( axis->axis == 4 || axis->axis == 5 )
+	{
+		int btn  = ( axis->axis == 4 ) ? XPAD_LT : XPAD_RT;
+		bool now = ( axis->value > 0 );
+
+		if ( btn < MAX_JOYSTICK_BUTTONS &&
+		     joy_button_state[ slot ][ btn ] != now )
+		{
+			joy_button_state[ slot ][ btn ] = now;
+			if ( now )
+				input_buffer_send( JOYSTICK_BUTTON_KEYCODE( slot, btn ) );
+		}
+	}
 }
 
 void app_joy_ball( SDL_JoyBallEvent * ball )
@@ -408,7 +441,12 @@ void app_joy_ball( SDL_JoyBallEvent * ball )
 
 void app_joy_button( SDL_JoyButtonEvent * button )
 {
-	if(button->button > MAX_JOYSTICK_BUTTONS)
+	int slot = joy_slot_from_instance( button->which );
+
+	if( slot < 0 )
+		return;
+
+	if(button->button >= MAX_JOYSTICK_BUTTONS)
 	{
 		DebugPrintf(
 			"sdl_input: ignoring joy %d button %d > max buttons\n",
@@ -416,21 +454,30 @@ void app_joy_button( SDL_JoyButtonEvent * button )
 		return;
 	}
 
-	joy_button_state[ button->which ][ button->button ] =
+	joy_button_state[ slot ][ button->button ] =
 		(button->type == SDL_JOYBUTTONDOWN);
+
+	DebugPrintf("DIAG1-BTN inst=%d slot=%d btn=%d down=%d\n",
+		(int)button->which, slot, (int)button->button,
+		(int)(button->type == SDL_JOYBUTTONDOWN));
 
 	// pass down mouse events for menu processing
 	if(  button->type == SDL_JOYBUTTONDOWN )
 	{
 		input_buffer_send(
-			button->button + DIK_JOYSTICK
+			JOYSTICK_BUTTON_KEYCODE( slot, button->button )
 		);
 	}
 }
 
 void app_joy_hat( SDL_JoyHatEvent * hat )
 {
-	if(hat->hat > MAX_JOYSTICK_POVS)
+	int slot = joy_slot_from_instance( hat->which );
+
+	if( slot < 0 )
+		return;
+
+	if(hat->hat >= MAX_JOYSTICK_POVS)
 	{
 		DebugPrintf(
 			"sdl_input: ignoring joy %d hat %d > max hats\n",
@@ -443,17 +490,17 @@ void app_joy_hat( SDL_JoyHatEvent * hat )
 		int d;
 		for( d = 0; d < MAX_POV_DIRECTIONS; d++ )
 		{
-			joy_hat_state[ hat->which ][ hat->hat ][ d ] = 0;
+			joy_hat_state[ slot ][ hat->hat ][ d ] = 0;
 		}
 		return;
 	}
 
 	if(hat->value & SDL_HAT_UP)
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_UP ] = 1;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_UP ] = 1;
 		input_buffer_send(
 			JOYSTICK_POVDIR_KEYCODE(
-				hat->which,
+				slot,
 				hat->hat,
 				JOY_HAT_UP
 			)
@@ -461,15 +508,15 @@ void app_joy_hat( SDL_JoyHatEvent * hat )
 	}
 	else
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_UP ] = 0;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_UP ] = 0;
 	}
 
 	if(hat->value & SDL_HAT_RIGHT)
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_RIGHT ] = 1;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_RIGHT ] = 1;
 		input_buffer_send(
 			JOYSTICK_POVDIR_KEYCODE(
-				hat->which,
+				slot,
 				hat->hat,
 				JOY_HAT_RIGHT
 			)
@@ -477,15 +524,15 @@ void app_joy_hat( SDL_JoyHatEvent * hat )
 	}
 	else
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_RIGHT ] = 0;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_RIGHT ] = 0;
 	}
 
 	if(hat->value & SDL_HAT_DOWN)
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_DOWN ] = 1;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_DOWN ] = 1;
 		input_buffer_send(
 			JOYSTICK_POVDIR_KEYCODE(
-				hat->which,
+				slot,
 				hat->hat,
 				JOY_HAT_DOWN
 			)
@@ -493,15 +540,15 @@ void app_joy_hat( SDL_JoyHatEvent * hat )
 	}
 	else
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_DOWN ] = 0;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_DOWN ] = 0;
 	}
 
 	if(hat->value & SDL_HAT_LEFT)
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_LEFT ] = 1;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_LEFT ] = 1;
 		input_buffer_send(
 			JOYSTICK_POVDIR_KEYCODE(
-				hat->which,
+				slot,
 				hat->hat,
 				JOY_HAT_LEFT
 			)
@@ -509,17 +556,34 @@ void app_joy_hat( SDL_JoyHatEvent * hat )
 	}
 	else
 	{
-		joy_hat_state[ hat->which ][ hat->hat ][ JOY_HAT_LEFT ] = 0;
+		joy_hat_state[ slot ][ hat->hat ][ JOY_HAT_LEFT ] = 0;
 	}
 }
 
 #ifndef DINPUTJOY
+/* SDL2 reports SDL_JoystickID *instance ids* in events, which are NOT the
+ * device indices used by SDL_JoystickOpen(). Instance ids keep incrementing
+ * across hotplugs, so indexing the state arrays with event->which writes out
+ * of bounds after a controller reconnects. Map instance id -> our slot. */
+static SDL_JoystickID joy_instance[ MAX_JOYSTICKS ];
+
+int joy_slot_from_instance( int which )
+{
+	int i;
+	for ( i = 0; i < MAX_JOYSTICKS; i++ )
+		if ( joy_instance[ i ] == (SDL_JoystickID) which )
+			return i;
+	return -1;
+}
+
 bool joysticks_init(void)
 {
 	int i, j, k;
 
 	// initial memory cleaning
 	ZERO_STACK_MEM(JoystickInfo);
+	for ( i = 0; i < MAX_JOYSTICKS; i++ )
+		joy_instance[ i ] = -1;
 
 	joysticks_cleanup();
 
@@ -537,12 +601,22 @@ bool joysticks_init(void)
 		// failed to open joystick
 		if(!joy)
 		{
+#if SDL_VERSION_ATLEAST(2,0,0)
+			DebugPrintf(
+				"joysticks_init: joystick (%d) failed to open\n",
+				i
+			);
+#else
 			DebugPrintf(
 				"joysticks_init: joystick (%d), '%s' failed to open\n",
 				i, SDL_JoystickName(i)
 			);
+#endif
 			continue;
 		}
+
+		// remember the instance id so events can be routed to this slot
+		joy_instance[i] = SDL_JoystickInstanceID(joy);
 
 		// setup defaults
 		JoystickInfo[i].sdl_joy 	= joy;
@@ -555,7 +629,11 @@ bool joysticks_init(void)
 		// TODO
 		// JoystickInfo[i].NumBalls = SDL_JoystickNumBalls(joy);
 
+#if SDL_VERSION_ATLEAST(2,0,0)
+		JoystickInfo[i].Name = strdup( SDL_JoystickName(joy) );
+#else
 		JoystickInfo[i].Name = strdup( SDL_JoystickName(i) );
+#endif
 
 		DebugPrintf( 
 			"joysticks_init: joystick (%d), name='%s', axises=%d, buttons=%d, hats=%d\n", 
@@ -662,7 +740,7 @@ bool joysticks_cleanup( void )
 			}
 		}
 
-		for (j = 0; j < JoystickInfo[i].NumButtons; i++)
+		for (j = 0; j < JoystickInfo[i].NumButtons; j++)
 		{
 			if(JoystickInfo[i].Button[j].name)
 			{

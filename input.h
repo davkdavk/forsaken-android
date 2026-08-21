@@ -125,6 +125,27 @@ mouse_state_t* read_mouse(void);
 // Joysticks //
 ///////////////
 
+/* SDL Android button indices for Xbox / standard game controllers */
+#define XPAD_A       0
+#define XPAD_B       1
+#define XPAD_X       2
+#define XPAD_Y       3
+#define XPAD_BACK    4
+#define XPAD_GUIDE   5
+#define XPAD_START   6
+#define XPAD_LS      7
+#define XPAD_RS      8
+#define XPAD_LB      9
+#define XPAD_RB      10
+#define XPAD_DUP     11
+#define XPAD_DDOWN   12
+#define XPAD_DLEFT   13
+#define XPAD_DRIGHT  14
+/* Triggers arrive as axes 4/5; these pseudo-button ids let them be bound
+ * through the same USERKEY path once converted in app_joy_axis(). */
+#define XPAD_LT      15
+#define XPAD_RT      16
+
 #define MAX_JOYSTICKS			16
 #define MAX_JOYSTICK_BUTTONS	128
 #define MAX_JOYSTICK_POVS		4

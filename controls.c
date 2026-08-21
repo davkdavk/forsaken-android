@@ -916,6 +916,13 @@ void control_ship( USERCONFIG *conf, SHIPCONTROL *ctrl )
 	{
 		for (joystick = 0; joystick < Num_Joysticks; joystick++)
 		{
+			{
+				static int __rj = 0;
+				if ((__rj++ % 240) == 0)
+					DebugPrintf("DIAG2-POLL joy=%d conn=%d assigned=%d JoystickInput=%d\n",
+						joystick, (int)JoystickInfo[joystick].connected,
+						(int)JoystickInfo[joystick].assigned, (int)JoystickInput);
+			}
 			if (JoystickInfo[joystick].connected && JoystickInfo[joystick].assigned)
 				ReadJoystickInput(ctrl, joystick);
 		}
@@ -1615,6 +1622,8 @@ void ReadJoystickInput(SHIPCONTROL *ctrl, int joysticknum)
 				amount  = -amount;
 
 			/* perform the action */
+			DebugPrintf("DIAG2-ACT joy=%d axis=%d action=%d amount=%.4f inv=%d\n",
+				joysticknum, axis, ShipAction, amount, (int)joyaxis->inverted);
 			DoShipAction( ctrl, ShipAction, framelag * amount );
 		}
 	}

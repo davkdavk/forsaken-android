@@ -1197,6 +1197,105 @@ int AddButton( int joystick, int button, USERKEY *k )
 }
 
 
+
+/*===================================================================
+	Xbox / SDL_GameController style pad auto-configuration.
+
+	SDL's Android backend reports Xbox pads with the standard layout:
+	  axes    0=LX 1=LY 2=RX 3=RY 4=LT 5=RT
+	  buttons 0=A 1=B 2=X 3=Y 4=Back 5=Guide 6=Start
+	          7=LSclick 8=RSclick 9=LB 10=RB
+	          11=DpadUp 12=DpadDown 13=DpadLeft 14=DpadRight
+
+	Control scheme:
+	  Left stick   thrust forward/back, strafe left/right
+	  Right stick  pull back = nose up (inverted), left/right = yaw
+	  RT           primary fire        LB/RB  roll left/right
+	  LT           thrust down         Y      thrust up
+	  B            turbo               X      drop mine
+	  RS click     rear view           A      headlights
+	  D-pad L/R    cycle guns          D-pad U/D  cycle missiles
+	  Start        menu / escape
+===================================================================*/
+static bool IsGameControllerPad( const char *name )
+{
+	if ( !name )
+		return false;
+	if ( strcasestr( name, "xbox" )       ) return true;
+	if ( strcasestr( name, "x-box" )      ) return true;
+	if ( strcasestr( name, "gamepad" )    ) return true;
+	if ( strcasestr( name, "controller" ) ) return true;
+	if ( strcasestr( name, "8bitdo" )     ) return true;
+	if ( strcasestr( name, "dualshock" )  ) return true;
+	if ( strcasestr( name, "dualsense" )  ) return true;
+	return false;
+}
+
+static void SetPadAxis( int joystick, int axis, int action, bool inverted,
+                        float sensitivity, int deadzone )
+{
+	if ( axis >= JoystickInfo[ joystick ].NumAxis )
+		return;
+	JoystickInfo[ joystick ].Axis[ axis ].action      = action;
+	JoystickInfo[ joystick ].Axis[ axis ].inverted    = inverted;
+	JoystickInfo[ joystick ].Axis[ axis ].sensitivity = sensitivity;
+	JoystickInfo[ joystick ].Axis[ axis ].deadzone    = deadzone;
+	JoystickInfo[ joystick ].Axis[ axis ].fine        = true;
+	JoystickInfo[ joystick ].Axis[ axis ].exists      = true;
+}
+
+void ConfigureGameControllerPad( int joystick, USERCONFIG *u )
+{
+	int k;
+
+	DebugPrintf( "ConfigureGameControllerPad: '%s' axes=%d buttons=%d\n",
+		JoystickInfo[ joystick ].Name,
+		JoystickInfo[ joystick ].NumAxis,
+		JoystickInfo[ joystick ].NumButtons );
+
+	for ( k = AXIS_Start; k <= AXIS_End; k++ )
+	{
+		JoystickInfo[ joystick ].Axis[ k ].action      = SHIPACTION_Nothing;
+		JoystickInfo[ joystick ].Axis[ k ].sensitivity = 0.02F;
+		JoystickInfo[ joystick ].Axis[ k ].deadzone    = 20;
+		JoystickInfo[ joystick ].Axis[ k ].inverted    = false;
+		JoystickInfo[ joystick ].Axis[ k ].fine        = true;
+	}
+
+	/* Left stick: X strafes, Y drives thrust.
+	 * Both stick axes are rotated 180 degrees from the SDL raw sense. */
+	SetPadAxis( joystick, 0, SHIPACTION_SlideLeft,   false, 0.02F, 20 );
+	SetPadAxis( joystick, 1, SHIPACTION_MoveForward, false, 0.02F, 20 );
+
+	/* Right stick: X yaws, Y pitches. Rotated 180 degrees to match the
+	 * left stick; pull back still raises the nose. */
+	SetPadAxis( joystick, 2, SHIPACTION_RotateLeft,  false, 0.02F, 20 );
+	SetPadAxis( joystick, 3, SHIPACTION_RotateUp,    true,  0.02F, 20 );
+
+	/* Triggers rest at -32768 and would read as a permanent full-scale
+	 * input if bound as analog ship axes, so they are used as buttons. */
+	SetPadAxis( joystick, 4, SHIPACTION_Nothing, false, 0.02F, 20 );
+	SetPadAxis( joystick, 5, SHIPACTION_Nothing, false, 0.02F, 20 );
+
+	AddButton( joystick, XPAD_RT,    &u->fire_primary );
+	AddButton( joystick, XPAD_LB,    &u->fire_secondary );
+	AddButton( joystick, XPAD_LB,    &u->roll_left );
+	AddButton( joystick, XPAD_RB,    &u->roll_right );
+	AddButton( joystick, XPAD_LT,    &u->move_down );
+	AddButton( joystick, XPAD_Y,     &u->move_up );
+	AddButton( joystick, XPAD_B,     &u->turbo );
+	AddButton( joystick, XPAD_X,     &u->fire_mine );
+	AddButton( joystick, XPAD_RS,    &u->full_rear_view );
+	AddButton( joystick, XPAD_A,     &u->headlights );
+	AddButton( joystick, XPAD_DLEFT,  &u->select_prev_primary );
+	AddButton( joystick, XPAD_DRIGHT, &u->select_next_primary );
+	AddButton( joystick, XPAD_DUP,    &u->select_next_secondary );
+	AddButton( joystick, XPAD_DDOWN,  &u->select_prev_secondary );
+
+	JoystickInfo[ joystick ].assigned = true;
+	SetUpJoystickAxis( joystick );
+}
+
 void DefaultJoystickSettings( USERCONFIG *u )
 {
 	int j, k;
@@ -1212,6 +1311,13 @@ void DefaultJoystickSettings( USERCONFIG *u )
 			JoystickInfo[ j ].assigned );
 		if ( JoystickInfo[ j ].connected && !JoystickInfo[ j ].assigned )
 		{
+			// Xbox / standard gamepad?
+			if ( IsGameControllerPad( JoystickInfo[ j ].Name ) )
+			{
+				ConfigureGameControllerPad( j, u );
+				continue;
+			}
+
 			// if spaceorb...
 			if ( !strcasecmp( JoystickInfo[ j ].Name, "Spacetec SpaceOrb 360" ) )
 			{
