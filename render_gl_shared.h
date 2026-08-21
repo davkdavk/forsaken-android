@@ -13,14 +13,22 @@
 #include "file.h"
 #include <stdio.h>
 #include "main_sdl.h"
+#ifdef RENDER_GLES
+#include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h>
+// GLES has only the float variants of these
+#define glClearDepth glClearDepthf
+#define glDepthRange glDepthRangef
+#else
 #include "SDL_opengl.h"
+#endif
 
 extern render_info_t render_info;
 
 extern GLenum render_last_gl_error;
 
 // TODO invalid pointer
-#if defined(MACOSX) && SDL_VERSION_ATLEAST(2,0,0)
+#if defined(RENDER_GLES) || (defined(MACOSX) && SDL_VERSION_ATLEAST(2,0,0))
 #define gluErrorString(e)\
 	(e == 0x0500 ? "invalid enumerant" : \
 	(e == 0x0501 ? "invalid value" : \
@@ -36,6 +44,15 @@ extern GLenum render_last_gl_error;
 
 const char * render_error_description( int e );
 
+/*
+ * glGetError() forces a synchronous round-trip with the driver, which stalls
+ * the pipeline. That is ruinous on tile-based deferred GPUs, where it can
+ * flush the whole tile buffer. The checks are peppered through the hot draw
+ * path, so they are compiled out unless explicitly requested.
+ *
+ * Build with -DGL_DEBUG_CHECKS to re-enable them.
+ */
+#ifdef GL_DEBUG_CHECKS
 #define CHECK_GL_ERRORS \
 	do \
 	{ \
@@ -47,6 +64,9 @@ const char * render_error_description( int e );
 				gluErrorString(e),  __FILE__, __LINE__ ); \
 		} \
 	} while (0)
+#else
+#define CHECK_GL_ERRORS do { } while (0)
+#endif
 
 
 typedef struct { float anisotropic; } gl_caps_t;
@@ -70,6 +90,7 @@ extern MATRIX world_matrix;
 #if GL != 1
 
 void mvp_update( GLuint current_program );
+void ortho_update( GLuint current_program );
 
 extern GLuint vertex_shader;
 extern GLuint fragment_shader;

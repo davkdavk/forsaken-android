@@ -43,6 +43,18 @@ const char * render_error_description( int e )
 
 // poly modes
 
+#ifdef RENDER_GLES
+// GLES has no glPolygonMode; wireframe/points debug modes are unavailable
+void render_mode_wireframe(void)
+{
+	DebugPrintf("render_mode_wireframe: not supported on GLES\n");
+}
+void render_mode_points(void)
+{
+	DebugPrintf("render_mode_points: not supported on GLES\n");
+}
+void render_mode_fill(void) {}
+#else
 void render_mode_wireframe(void)
 {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -57,6 +69,7 @@ void render_mode_fill(void)
 {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
+#endif // RENDER_GLES
 
 // unused in opengl
 bool FSBeginScene(){ return true; }
@@ -225,8 +238,10 @@ bool FSCreateTexture(LPTEXTURE *texture, const char *fileName, u_int16_t *width,
 
 static void print_info( void )
 {
-	GLboolean b;
-	glGetBooleanv(GL_STEREO,&b);
+	GLboolean b = GL_FALSE;
+#ifndef RENDER_GLES
+	glGetBooleanv(GL_STEREO,&b); // GL_STEREO does not exist in GLES
+#endif
 
 	DebugPrintf( "gl vendor='%s', renderer='%s', version='%s', shader='%s', stereo='%s'\n",
 		glGetString(GL_VENDOR),
@@ -265,22 +280,32 @@ static void print_info( void )
 //   - different vertex layout (LVERTEX vs TLVERTEX)
 // - vertex colors are in BGRA format, not RGBA
 
-#if   GL == 2
+#if   defined(RENDER_GLES)
+	#define GLSL_VERSION   "300 es"
+	#define GLSL_VERT_IN   "in"
+	#define GLSL_FRAG_IN   "in"
+	#define GLSL_FRAG_OUT  "out"
+	#define GLSL_VERT_OUT  "out"
+	#define GLSL_PRECISION "precision highp float;\n"
+#elif GL == 2
 	#define GLSL_VERSION   "120"
 	#define GLSL_VERT_IN   "attribute"
 	#define GLSL_VERT_OUT  "varying"
 	#define GLSL_FRAG_IN   "varying"
 	#define GLSL_FRAG_OUT  ""
+	#define GLSL_PRECISION ""
 #elif GL >= 3
 	#define GLSL_VERSION   "150"
 	#define GLSL_VERT_IN   "in"
 	#define GLSL_FRAG_IN   "in"
 	#define GLSL_FRAG_OUT  "out"
 	#define GLSL_VERT_OUT  "out"
+	#define GLSL_PRECISION ""
 #endif
 
 static const char *default_vertex_shader =
 	"#version " GLSL_VERSION "\n"
+	GLSL_PRECISION
 	"\n"
 	"uniform bool orthographic;\n"
 	"\n"
@@ -300,7 +325,10 @@ static const char *default_vertex_shader =
 	"    if (orthographic)\n"
 	"    {\n"
 // TODO - broken in GL 2
-#if 0
+#if defined(RENDER_GLES)
+	"        // tlpos.w is a D3D rhw value, not 1.0 - rebuild w\n"
+	"        gl_Position = ortho_proj * vec4(tlpos.xyz, 1.0);\n"
+#elif 0
 	"        gl_Position = ortho_proj * tlpos;\n"
 #endif
 	"    }\n"
@@ -321,6 +349,7 @@ static const char *default_vertex_shader =
 
 static const char *default_fragment_shader =
 	"#version " GLSL_VERSION "\n"
+	GLSL_PRECISION
 	"\n"
 	"uniform bool colorkeying_enabled;\n"
 	"uniform bool texturing_enabled;\n"
@@ -508,7 +537,7 @@ static bool set_defaults( void )
 	return true;
 }
 
-static resize_viewport( int width, int height )
+static void resize_viewport( int width, int height )
 {
 	render_viewport_t viewport;
 	viewport.X = 0;
@@ -789,9 +818,10 @@ void ortho_update ( GLuint current_program )
 {
 	MATRIX m;
 	float left, right, bottom, top, near, far;
-	GLuint u_ortho_matrix;
+	GLint u_ortho_matrix;
 
-	if ( ortho_matrix_needs_update && ( u_ortho_matrix = glGetUniformLocation( current_program, "ortho_proj" ) ) >= 0 )
+	u_ortho_matrix = glGetUniformLocation( current_program, "ortho_proj" );
+	if ( ortho_matrix_needs_update && u_ortho_matrix >= 0 )
 	{
 		left = 0.0f;
 		right = render_info.ThisMode.w;
@@ -809,7 +839,20 @@ void ortho_update ( GLuint current_program )
 		m._24 = -(top+bottom)/(top-bottom) + 2.0f;
 		m._34 = -(far+near)/(far-near);
 		m._44 = 1.0f;
+#ifdef RENDER_GLES
+		// transpose in C: ES drivers may reject transpose=GL_TRUE
+		{
+			float *a = (float *) &m;
+			float t[16];
+			int r, c;
+			for ( r = 0; r < 4; r++ )
+				for ( c = 0; c < 4; c++ )
+					t[c*4+r] = a[r*4+c];
+			glUniformMatrix4fv( u_ortho_matrix, 1, GL_FALSE, t );
+		}
+#else
 		glUniformMatrix4fv( u_ortho_matrix, 1, GL_TRUE, &m );
+#endif
 		CHECK_GL_ERRORS;
 		ortho_matrix_needs_update = false;
 	}

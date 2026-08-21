@@ -46,6 +46,18 @@ bool FSCreateDynamicIndexBuffer(RENDEROBJECT *renderObject, int numIndices)
 static GLuint old_array_buf = 0;
 static GLuint old_index_buf = 0;
 
+#ifdef RENDER_GLES
+// GLES3 has no glMapBuffer; emulate a whole-buffer write mapping
+static void * map_buffer_write( GLenum target )
+{
+	GLint size = 0;
+	glGetBufferParameteriv( target, GL_BUFFER_SIZE, &size );
+	return glMapBufferRange( target, 0, size, GL_MAP_WRITE_BIT );
+}
+#else
+#define map_buffer_write( target ) glMapBuffer( target, GL_WRITE_ONLY )
+#endif
+
 bool FSLockVertexBuffer(RENDEROBJECT *renderObject, LVERTEX **verts)
 {
 	if ( old_array_buf )
@@ -55,7 +67,7 @@ bool FSLockVertexBuffer(RENDEROBJECT *renderObject, LVERTEX **verts)
 	}
 	glGetIntegerv( GL_ARRAY_BUFFER_BINDING, &old_array_buf );
 	glBindBuffer( GL_ARRAY_BUFFER, (GLuint) renderObject->lpVertexBuffer );
-	*verts = (LVERTEX *) glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY );
+	*verts = (LVERTEX *) map_buffer_write( GL_ARRAY_BUFFER );
 	if(!*verts)
 	{
 		DebugPrintf("FSLockVertexBuffer: glMapBuffer returned NULL\n");
@@ -83,7 +95,7 @@ bool FSLockNormalBuffer(RENDEROBJECT *renderObject, NORMAL **normals)
 	}
 	glGetIntegerv( GL_ARRAY_BUFFER_BINDING, &old_array_buf );
 	glBindBuffer( GL_ARRAY_BUFFER, (GLuint) renderObject->lpNormalBuffer );
-	*normals = (NORMAL *) glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY );
+	*normals = (NORMAL *) map_buffer_write( GL_ARRAY_BUFFER );
 	if(!*normals)
 	{
 		DebugPrintf("FSLockNormalBuffer: glMapBuffer returned NULL\n");
@@ -111,7 +123,7 @@ bool FSLockIndexBuffer(RENDEROBJECT *renderObject, WORD **indices)
 	}
 	glGetIntegerv( GL_ELEMENT_ARRAY_BUFFER_BINDING, &old_index_buf );
 	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint) renderObject->lpIndexBuffer );
-	*indices = (WORD *) glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY );
+	*indices = (WORD *) map_buffer_write( GL_ELEMENT_ARRAY_BUFFER );
 	if(!*indices)
 	{
 		DebugPrintf("FSLockIndexBuffer: glMapBuffer returned NULL\n");
@@ -178,18 +190,19 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 		{ NULL,     0, 0,                0,        0  }
 	}, *attr;
 	//GLuint current_program;
-	GLuint u_ortho;
-	GLuint u_colorkey;
-	GLuint u_enabletex;
+	GLint u_ortho;
+	GLint u_colorkey;
+	GLint u_enabletex;
 	TEXTUREGROUP *group;
 	texture_t *texdata;
 	int loc;
 	int i;
+	int __ai;
 
-	glBindBuffer( GL_ARRAY_BUFFER, renderObject->lpVertexBuffer );
+	glBindBuffer( GL_ARRAY_BUFFER, (GLuint)(size_t) renderObject->lpVertexBuffer );
 
 	if ( renderObject->lpIndexBuffer )
-		glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderObject->lpIndexBuffer );
+		glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)(size_t) renderObject->lpIndexBuffer );
 	else
 		glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
 
@@ -200,37 +213,61 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 
 	// Tell OpenGL about the buffer data layout
 	// see the LVERTEX and TLVERTEX definitions inside include/new3d.h
+	// base_vertex shifts the attribute base so indices can stay relative
+	// (used to emulate glDrawElementsBaseVertex on GLES < 3.2)
 	attr = orthographic ? ortho_attr : normal_attr;
-	for ( i=0; attr[i].name; i++ )
 	{
-		loc = glGetAttribLocation( current_program, attr[i].name );
-		if (loc >= 0)
+		size_t stride = orthographic ? sizeof(TLVERTEX) : sizeof(LVERTEX);
+		size_t base = 0;
+		/* Attribute locations are string lookups inside the driver. They
+		 * depend only on the linked program, so resolve them once here
+		 * instead of on every SETUP_ATTRIBS() call (which the GLES
+		 * BaseVertex emulation invokes per texture group). */
+		int attr_loc[8];
+		int normal_loc = -1;
 		{
-			glVertexAttribPointer(
-				loc,
-				attr[i].components,
-				attr[i].type,
-				attr[i].normalized,
-				orthographic ? sizeof(TLVERTEX) : sizeof(LVERTEX),
-				attr[i].offset
-			);
-			glEnableVertexAttribArray( loc );
+			int k;
+			for ( k = 0; k < 8 && attr[k].name; k++ )
+				attr_loc[k] = glGetAttribLocation( current_program, attr[k].name );
+			for ( ; k < 8; k++ )
+				attr_loc[k] = -1;
+			if ( renderObject->lpNormalBuffer )
+				normal_loc = glGetAttribLocation( current_program, "vnormal" );
 		}
-	}
+#define SETUP_ATTRIBS( base_vertex ) \
+	do { \
+		base = (size_t)(base_vertex); \
+		glBindBuffer( GL_ARRAY_BUFFER, (GLuint)(size_t) renderObject->lpVertexBuffer ); \
+		for ( __ai=0; attr[__ai].name; __ai++ ) \
+		{ \
+			loc = attr_loc[__ai]; \
+			if (loc >= 0) \
+			{ \
+				glVertexAttribPointer( \
+					loc, \
+					attr[__ai].components, \
+					attr[__ai].type, \
+					attr[__ai].normalized, \
+					stride, \
+					(const GLvoid *)( base * stride + (size_t) attr[__ai].offset ) \
+				); \
+				glEnableVertexAttribArray( loc ); \
+			} \
+		} \
+		if ( renderObject->lpNormalBuffer ) \
+		{ \
+			glBindBuffer( GL_ARRAY_BUFFER, (GLuint)(size_t) renderObject->lpNormalBuffer ); \
+			loc = normal_loc; \
+			if (loc >= 0) \
+			{ \
+				glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, sizeof(NORMAL), \
+					(const GLvoid *)( base * sizeof(NORMAL) ) ); \
+				glEnableVertexAttribArray( loc ); \
+			} \
+		} \
+	} while (0)
 
-	CHECK_GL_ERRORS;
-
-	// tell it about the normal buffer
-	if ( renderObject->lpNormalBuffer )
-	{
-		glBindBuffer( GL_ARRAY_BUFFER, renderObject->lpNormalBuffer );
-		loc = glGetAttribLocation( current_program, "vnormal" );
-		if (loc >= 0)
-		{
-			glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, sizeof(NORMAL), 0 );
-			glEnableVertexAttribArray( loc );
-		}
-	}
+	SETUP_ATTRIBS( 0 );
 
 	CHECK_GL_ERRORS;
 
@@ -244,12 +281,16 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 	if ((u_ortho = glGetUniformLocation(current_program, "orthographic")) >= 0)
 		glUniform1i( u_ortho, orthographic ? GL_TRUE : GL_FALSE );
 
+	/* Locations depend only on the program, not on the group. */
+	u_colorkey  = glGetUniformLocation( current_program, "colorkeying_enabled" );
+	u_enabletex = glGetUniformLocation( current_program, "texturing_enabled" );
+
 	for ( i = 0; i < renderObject->numTextureGroups; i++ )
 	{
 		group = &renderObject->textureGroups[i];
-		if ( (u_colorkey = glGetUniformLocation(current_program, "colorkeying_enabled")) >= 0 )
+		if ( u_colorkey >= 0 )
 			glUniform1i( u_colorkey, group->colourkey ? GL_TRUE : GL_FALSE );
-		if ( (u_enabletex = glGetUniformLocation(current_program, "texturing_enabled")) >= 0 )
+		if ( u_enabletex >= 0 )
 		{
 			glUniform1i( u_enabletex, group->texture ? GL_TRUE : GL_FALSE );
 			if ( group->texture )
@@ -258,8 +299,18 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 				glBindTexture( GL_TEXTURE_2D, texdata->id );
 			}
 		}
+#ifdef RENDER_GLES
+		// emulate BaseVertex: rebase the attribute pointers instead
+		if ( (size_t) group->startVert != base )
+			SETUP_ATTRIBS( group->startVert );
+		glDrawElements( primitive_type, group->numTriangles * 3, GL_UNSIGNED_SHORT,
+			(const GLvoid *)( (size_t) group->startIndex * sizeof(WORD) ) );
+#else
 		glDrawElementsBaseVertex( primitive_type, group->numTriangles * 3, GL_UNSIGNED_SHORT, group->startIndex * sizeof(WORD), group->startVert );
+#endif
 	}
+	} // stride/base scope
+#undef SETUP_ATTRIBS
 
 	CHECK_GL_ERRORS;
 
