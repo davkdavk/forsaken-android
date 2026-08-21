@@ -20,6 +20,7 @@ void ScoreSort();																				// Sorts player's score from highest to low
 void InitScoreSortTab(int Player);														// Initiate Score Sort Tab player IDs
 int GetTotalKills(int Killer);																	// Get total number of kills (not including suicides)
 int GetTotalDeaths(int Victim);															// Get total number of deaths
+int GetFriendlyKills( int Player );																	// Get total number of friendly kills
 int GetKillStats(int Killer, int Victim);													// Get an individual kill statistic
 int GetScoreStats(int Player);																// Get an individual score statistic
 int GetRealScore(int Player);

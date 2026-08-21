@@ -30,6 +30,7 @@
 \*******************************************************************/
 
 #include "main.h"
+#include "util.h"
 #include "stats.h"
 #include <stdio.h>
 #include "new3d.h"

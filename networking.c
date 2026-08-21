@@ -4,6 +4,7 @@
 //
 
 #include "main.h"
+#include "util.h"
 #include <stdio.h>
 
 #include "new3d.h"
