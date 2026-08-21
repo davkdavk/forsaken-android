@@ -5288,6 +5288,7 @@ bool Our_CalculateFrameRate(void)
 		{
 			// calculate average frames per second
 			FPS = our_count / seconds;
+			DebugPrintf("REALFPS %f\n", FPS);
 
 			// average time per frame in milliseconds
 			avg_time_per_frame = (int)((1.0F / FPS) * 1000.0F);
@@ -5536,11 +5537,15 @@ void CalculateFramelag( void )
   // since they are constantly updated via networking
   // and are not time based at all....
 
-  while( !(real_framelag = timer_run( &framelag_timer )) )
-	{
-	  //DebugPrintf("WARNING: real_framelag=%d\n",real_framelag);
-		SDL_Delay(10);
-	}
+  {
+    /* Guard against a pathological spin if the tick source ever stalls. */
+    int spins = 0;
+    while( !(real_framelag = timer_run( &framelag_timer )) )
+    {
+      if( ++spins > 200 ) break;
+      SDL_Delay(10);
+    }
+  }
 
   framelag = real_framelag * 71.0F;
 

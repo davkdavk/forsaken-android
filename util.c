@@ -1,7 +1,11 @@
+#include <ctype.h>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
-#include <sys/timeb.h>
+#include <sys/time.h>
 #include "main.h"
 #include "file.h"
 #include "util.h"
@@ -145,10 +149,10 @@ void DebugPrintf( const char * format, ... ) // timestamp prefix
 	if(!Debug)
 		return;
 
-	struct timeb now;
-	ftime(&now);
-	sprintf( buf, "%ld.%.3d ",
-		now.time, now.millitm);
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	sprintf( buf, "%ld.%.3ld ",
+		(long)now.tv_sec, (long)(now.tv_usec / 1000));
 
 	buf2 = strchr(buf,0);
 	buf_length = sizeof(buf)-strlen(buf);
@@ -188,6 +192,10 @@ void DebugPuts( char * buf )
 
 #ifdef WIN32
 	OutputDebugString( buf );
+#elif defined(__ANDROID__)
+	// stderr is discarded on Android; route engine logging to logcat so it
+	// can be read with: adb logcat -s forsaken:V
+	__android_log_write( ANDROID_LOG_INFO, "forsaken", buf );
 #else
 	fputs( buf, stderr );
 #endif

@@ -138,7 +138,13 @@ static void set_opengl_settings( void )
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER,	  1);
 
 #if SDL_VERSION_ATLEAST(2,0,0)
-#if GL == 3
+#ifdef RENDER_GLES
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	// GLES may default to a 16 bit depth buffer -> z fighting; ask for 24
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+#elif GL == 3
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 	// TODO - this isn't only mac osx specific is it ?

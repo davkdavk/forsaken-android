@@ -11,6 +11,8 @@
 #include "title.h"
 #include "lua_common.h"
 #include "sfx.h"
+#include <stdbool.h>
+#include <android/log.h>
 #include <SDL.h>
 #include "input.h"
 #include "sound.h"
@@ -28,7 +30,7 @@
 //
 
 bool Debug = true;
-bool ShowFrameRate = false;
+bool ShowFrameRate = true;
 bool ShowInfo = false;
 
 int cliSleep = 0;
@@ -174,7 +176,6 @@ static bool ParseCommandLine(char* lpCmdLine)
     while(option != NULL )
 	{
 
-		// last option
 		if (!strcasecmp(option,"chdir"))
 		{
 			// dont loop anymore were done
