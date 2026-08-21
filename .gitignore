@@ -11,3 +11,15 @@ pilots
 savegame
 *.dll
 gmon.out
+
+# Android build artefacts
+*.o
+obj/
+libmain.so
+*.apk
+*.idsig
+jobj/
+rescomp/
+apkroot/
+classes.dex
+debug.keystore
