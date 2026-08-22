@@ -50,6 +50,36 @@ typedef struct {
 	VirtualKeycode keycode;
 } VIRTUALKEYMAP;
 
+/*-------------------------------------------------------------------
+	Remappable gamepad actions. Stored by name in the pilot file so
+	the numbering here can change without breaking saved configs.
+-------------------------------------------------------------------*/
+enum {
+	PADBIND_FirePrimary,
+	PADBIND_FireSecondary,
+	PADBIND_FireMine,
+	PADBIND_Turbo,
+	PADBIND_RollLeft,
+	PADBIND_RollRight,
+	PADBIND_NextPrimary,
+	PADBIND_PrevPrimary,
+	PADBIND_NextSecondary,
+	PADBIND_PrevSecondary,
+	PADBIND_Pause,
+	PADBIND_MAX
+};
+
+/* Remappable analog roles. */
+enum {
+	PADAXIS_Forward,     /* + throttle  */
+	PADAXIS_Reverse,     /* - throttle  */
+	PADAXIS_Strafe,
+	PADAXIS_Vertical,
+	PADAXIS_Yaw,
+	PADAXIS_Pitch,
+	PADAXIS_MAX
+};
+
 typedef struct {
 	char name[MAX_PLAYER_NAME_LENGTH];
 	u_int16_t bike;
@@ -105,6 +135,30 @@ typedef struct {
 	char macro1[ MAXTEXTMSG ];
 	char macro2[ MAXTEXTMSG ];
 	char macro3[ MAXTEXTMSG ];
+
+	/*---------------------------------------------------------------
+		SDL_GameController pad settings.
+
+		Kept separate from the mouse/keyboard fields above so a pad
+		can be retuned without disturbing them. Zero means "not set",
+		in which case the code-side defaults are used - that keeps
+		older pilot files loading unchanged.
+	---------------------------------------------------------------*/
+	float pad_deadzone_left;      /* radial, 0..1   default 0.15 */
+	float pad_deadzone_right;     /* radial, 0..1   default 0.15 */
+	float pad_deadzone_trigger;   /* linear, 0..1   default 0.08 */
+	float pad_look_sensitivity;   /* right stick    default 1.0  */
+	float pad_move_sensitivity;   /* left stick     default 1.0  */
+	int   pad_invert_pitch;       /* 0 = no                      */
+	int   pad_expo;               /* 0 = linear, 1 = mild expo   */
+
+	/* Bindings: each entry holds an SDL_GameControllerButton value,
+	 * or -1 for unbound. Indexed by PADBIND_*. */
+	int   pad_bind[ PADBIND_MAX ];
+
+	/* Axis roles: each entry holds an SDL_GameControllerAxis value,
+	 * or -1 for unbound. Indexed by PADAXIS_*. */
+	int   pad_axis[ PADAXIS_MAX ];
 } USERCONFIG;
 
 

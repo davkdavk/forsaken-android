@@ -655,7 +655,13 @@ void control_ship( USERCONFIG *conf, SHIPCONTROL *ctrl )
     return; // bail if no config supplied
 
   if ( CurrentMenu )
+  {
+#ifdef __ANDROID__
+    extern void AndroidPadMenuInput( void );
+    AndroidPadMenuInput();
+#endif
     return; // disable bike controls if using menus
+  }
 
   mouse_dx = mouse_states[ new_input ].xrel * conf->mouse_x_sensitivity * 4.0F;
   mouse_dy = mouse_states[ new_input ].yrel * conf->mouse_y_sensitivity * 4.0F;
@@ -927,6 +933,13 @@ void control_ship( USERCONFIG *conf, SHIPCONTROL *ctrl )
 				ReadJoystickInput(ctrl, joystick);
 		}
 	}
+
+#ifdef __ANDROID__
+	{
+		extern void AndroidReadInput( SHIPCONTROL * );
+		AndroidReadInput( ctrl );
+	}
+#endif
 
 #endif // INPUT_DISABLED
 

@@ -149,6 +149,10 @@ USERCONFIG default_config = {
 	"you ugly son of a bitch...",		// taunt 1 ( F9 )
 	"Time to die...",					// taunt 2 ( F10 )
 	"I will tear your soul apart...",	// taunt 3 ( F11 )
+
+	0.15F, 0.15F, 0.08F, 1.0F, 1.0F, 0, 1,
+	{ 0,2,-1,8, 9,10, 14,13, 12,11, 6 },
+	{ 5,4, 0,1, 2,3 }
 };
 
 
@@ -268,6 +272,10 @@ USERCONFIG my_controls = {
 	"you ugly son of a bitch...",		// taunt 1 ( F9 )
 	"Time to die...",					// taunt 2 ( F10 )
 	"I will tear your soul apart...",	// taunt 3 ( F11 )
+
+	0.15F, 0.15F, 0.08F, 1.0F, 1.0F, 0, 1,
+	{ 0,2,-1,8, 9,10, 14,13, 12,11, 6 },
+	{ 5,4, 0,1, 2,3 }
 };
 
 
@@ -791,6 +799,140 @@ read_autolevel( FILE *f, USERCONFIG *u, char *last_token )
 	}
 	else
 		return 0;
+}
+
+static int
+read_pad_deadzone_left( FILE *f, USERCONFIG *u, char *last_token )
+{
+	if ( fscanf( f, " %f", &u->pad_deadzone_left ) == 1 )
+	{
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	else
+		return 0;
+}
+
+static int
+read_pad_deadzone_right( FILE *f, USERCONFIG *u, char *last_token )
+{
+	if ( fscanf( f, " %f", &u->pad_deadzone_right ) == 1 )
+	{
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	else
+		return 0;
+}
+
+static int
+read_pad_deadzone_trigger( FILE *f, USERCONFIG *u, char *last_token )
+{
+	if ( fscanf( f, " %f", &u->pad_deadzone_trigger ) == 1 )
+	{
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	else
+		return 0;
+}
+
+static int
+read_pad_look_sensitivity( FILE *f, USERCONFIG *u, char *last_token )
+{
+	if ( fscanf( f, " %f", &u->pad_look_sensitivity ) == 1 )
+	{
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	else
+		return 0;
+}
+
+static int
+read_pad_move_sensitivity( FILE *f, USERCONFIG *u, char *last_token )
+{
+	if ( fscanf( f, " %f", &u->pad_move_sensitivity ) == 1 )
+	{
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	else
+		return 0;
+}
+
+static int
+read_pad_invert_pitch( FILE *f, USERCONFIG *u, char *last_token )
+{
+	if ( fscanf( f, " %d", &u->pad_invert_pitch ) == 1 )
+	{
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	else
+		return 0;
+}
+
+static int
+read_pad_expo( FILE *f, USERCONFIG *u, char *last_token )
+{
+	if ( fscanf( f, " %d", &u->pad_expo ) == 1 )
+	{
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	else
+		return 0;
+}
+
+static int
+read_pad_bind( FILE *f, USERCONFIG *u, char *last_token )
+{
+	char action_name[80];
+	int  btn;
+	if ( fscanf( f, " %80s %d", action_name, &btn ) == 2 )
+	{
+		int i;
+		static const char *names[ PADBIND_MAX ] = {
+			"fire_primary","fire_secondary","fire_mine","turbo",
+			"roll_left","roll_right","next_primary","prev_primary",
+			"next_secondary","prev_secondary","pause"
+		};
+		for ( i = 0; i < PADBIND_MAX; i++ )
+			if ( !strcasecmp( action_name, names[ i ] ) )
+			{
+				u->pad_bind[ i ] = btn;
+				break;
+			}
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	fscanf( f, " %80s", last_token );
+	return 0;
+}
+
+static int
+read_pad_axis( FILE *f, USERCONFIG *u, char *last_token )
+{
+	char role_name[80];
+	int  axis;
+	if ( fscanf( f, " %80s %d", role_name, &axis ) == 2 )
+	{
+		int i;
+		static const char *names[ PADAXIS_MAX ] = {
+			"forward","reverse","strafe","vertical","yaw","pitch"
+		};
+		for ( i = 0; i < PADAXIS_MAX; i++ )
+			if ( !strcasecmp( role_name, names[ i ] ) )
+			{
+				u->pad_axis[ i ] = axis;
+				break;
+			}
+		fscanf( f, " %80s", last_token );
+		return 1;
+	}
+	fscanf( f, " %80s", last_token );
+	return 0;
 }
 
 static int
@@ -1466,6 +1608,16 @@ read_config( USERCONFIG *u, char *cfg_name )
 		{ "macro1",  		read_macro1					},
 		{ "macro2",  		read_macro2					},
 		{ "macro3",  		read_macro3					},
+
+		{ "pad_deadzone_left",    read_pad_deadzone_left      },
+		{ "pad_deadzone_right",   read_pad_deadzone_right     },
+		{ "pad_deadzone_trigger", read_pad_deadzone_trigger   },
+		{ "pad_look",             read_pad_look_sensitivity   },
+		{ "pad_move",             read_pad_move_sensitivity   },
+		{ "pad_invert",           read_pad_invert_pitch       },
+		{ "pad_expo",             read_pad_expo               },
+		{ "pad_bind",             read_pad_bind               },
+		{ "pad_axis",             read_pad_axis               },
 		{ NULL,				NULL						}
 	};
 
@@ -1494,6 +1646,31 @@ read_config( USERCONFIG *u, char *cfg_name )
 	u->invert_pitch = 0;
 	u->mouse_x_sensitivity = 0.6F;
 	u->mouse_y_sensitivity = 0.6F;
+	u->pad_deadzone_left    = 0.15F;
+	u->pad_deadzone_right   = 0.15F;
+	u->pad_deadzone_trigger = 0.08F;
+	u->pad_look_sensitivity = 1.0F;
+	u->pad_move_sensitivity = 1.0F;
+	u->pad_invert_pitch     = 0;
+	u->pad_expo             = 1;
+	for ( j = 0; j < PADBIND_MAX; j++ ) u->pad_bind[ j ] = -1;
+	for ( j = 0; j < PADAXIS_MAX; j++ ) u->pad_axis[ j ] = -1;
+	u->pad_bind[ PADBIND_FirePrimary    ] = SDL_CONTROLLER_BUTTON_A;
+	u->pad_bind[ PADBIND_FireSecondary  ] = SDL_CONTROLLER_BUTTON_X;
+	u->pad_bind[ PADBIND_Turbo          ] = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
+	u->pad_bind[ PADBIND_RollLeft       ] = SDL_CONTROLLER_BUTTON_LEFTSHOULDER;
+	u->pad_bind[ PADBIND_RollRight      ] = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER;
+	u->pad_bind[ PADBIND_NextPrimary    ] = SDL_CONTROLLER_BUTTON_DPAD_RIGHT;
+	u->pad_bind[ PADBIND_PrevPrimary    ] = SDL_CONTROLLER_BUTTON_DPAD_LEFT;
+	u->pad_bind[ PADBIND_NextSecondary  ] = SDL_CONTROLLER_BUTTON_DPAD_DOWN;
+	u->pad_bind[ PADBIND_PrevSecondary  ] = SDL_CONTROLLER_BUTTON_DPAD_UP;
+	u->pad_bind[ PADBIND_Pause          ] = SDL_CONTROLLER_BUTTON_START;
+	u->pad_axis[ PADAXIS_Forward  ] = SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
+	u->pad_axis[ PADAXIS_Reverse  ] = SDL_CONTROLLER_AXIS_TRIGGERLEFT;
+	u->pad_axis[ PADAXIS_Strafe   ] = SDL_CONTROLLER_AXIS_LEFTX;
+	u->pad_axis[ PADAXIS_Vertical ] = SDL_CONTROLLER_AXIS_LEFTY;
+	u->pad_axis[ PADAXIS_Yaw      ] = SDL_CONTROLLER_AXIS_RIGHTX;
+	u->pad_axis[ PADAXIS_Pitch    ] = SDL_CONTROLLER_AXIS_RIGHTY;
 	u->send_msg.key[ 0 ] = SDLK_RETURN;
 
 	// reset all joystick settings
@@ -1850,6 +2027,28 @@ write_config( USERCONFIG *u, char *cfg_name )
 	fprintf( f, "MACRO1\t%s\n", MacroText1.text );
 	fprintf( f, "MACRO2\t%s\n", MacroText2.text );
 	fprintf( f, "MACRO3\t%s\n", MacroText3.text );
+
+	fprintf( f, "PAD_DEADZONE_LEFT\t%f\n", u->pad_deadzone_left );
+	fprintf( f, "PAD_DEADZONE_RIGHT\t%f\n", u->pad_deadzone_right );
+	fprintf( f, "PAD_DEADZONE_TRIGGER\t%f\n", u->pad_deadzone_trigger );
+	fprintf( f, "PAD_LOOK\t%f\n", u->pad_look_sensitivity );
+	fprintf( f, "PAD_MOVE\t%f\n", u->pad_move_sensitivity );
+	fprintf( f, "PAD_INVERT\t%d\n", u->pad_invert_pitch );
+	fprintf( f, "PAD_EXPO\t%d\n", u->pad_expo );
+	{
+		static const char *bnames[ PADBIND_MAX ] = {
+			"fire_primary","fire_secondary","fire_mine","turbo",
+			"roll_left","roll_right","next_primary","prev_primary",
+			"next_secondary","prev_secondary","pause"
+		};
+		static const char *anames[ PADAXIS_MAX ] = {
+			"forward","reverse","strafe","vertical","yaw","pitch"
+		};
+		for ( j = 0; j < PADBIND_MAX; j++ )
+			fprintf( f, "PAD_BIND\t%s %d\n", bnames[ j ], u->pad_bind[ j ] );
+		for ( j = 0; j < PADAXIS_MAX; j++ )
+			fprintf( f, "PAD_AXIS\t%s %d\n", anames[ j ], u->pad_axis[ j ] );
+	}
 
 
 	for (joystick = 0; joystick < Num_Joysticks; joystick++)
