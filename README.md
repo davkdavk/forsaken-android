@@ -4,9 +4,9 @@ This repo holds the community port of Forsaken!
 
 Check out the [Wiki](https://github.com/ForsakenX/forsaken/wiki) for more information.
 
-## Android — Orange Pi 4 Pro (A733)
+## Android — Orange Pi 4 Pro (A733) + Mali / Adreno / PowerVR
 
-This fork's Android port targets the **Orange Pi 4 Pro** (Allwinner A733, Android 13, GLES 3.2, arm64-v8a) as the ship-it device; also boots on other arm64 Android 13+ devices with the same self-contained APK (no external data files). See `BUILD_ANDROID_PI.md` for Xbox-pad mappings, build steps, and verification.
+Primary ship-it is **Orange Pi 4 Pro (Allwinner A733, BXM-4-64, Android 13, GLES 3.2, arm64-v8a)** — single self-contained APK (no external data). The GLES 3.2 render path is generic (`precision highp` shaders, no vendor intrinsics) and is now the target for **Mali (G57/G610/G52), Adreno (6xx/7xx) and other PowerVR** SoCs as well; no per-GPU APKs. See `BUILD_ANDROID_PI.md` for pad mappings, GPU matrix, and build/verify steps.
 
 ## Help Wanted — Other SoCs & Phones
 
