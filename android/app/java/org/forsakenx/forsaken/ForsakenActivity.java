@@ -4,6 +4,8 @@ import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
+import android.view.View;
+import android.view.WindowManager;
 import java.io.File;
 import java.lang.reflect.Method;
 
@@ -74,6 +76,20 @@ public class ForsakenActivity extends SDLActivity {
             Log.e(TAG, "chdir failed", e);
         }
         super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+        hideSystemUI();
+    }
+
+    private void hideSystemUI() {
+        View decor = getWindow().getDecorView();
+        decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemUI();
     }
 
     @Override
@@ -106,7 +122,7 @@ public class ForsakenActivity extends SDLActivity {
 
         // The engine scales its 320x200 virtual canvas by w/320 and h/200.
         // Absurdly large surfaces just waste fill rate, so cap the long edge.
-        final int MAX_W = 1920;
+        final int MAX_W = 2560;
         if (w > MAX_W) {
             h = (int) Math.round((double) h * MAX_W / (double) w);
             w = MAX_W;

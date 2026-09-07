@@ -45,6 +45,9 @@ bool FSCreateDynamicIndexBuffer(RENDEROBJECT *renderObject, int numIndices)
 
 static GLuint old_array_buf = 0;
 static GLuint old_index_buf = 0;
+#ifdef RENDER_GLES
+static GLuint g_vao = 0;
+#endif
 
 #ifdef RENDER_GLES
 // GLES3 has no glMapBuffer; emulate a whole-buffer write mapping
@@ -267,6 +270,10 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 		} \
 	} while (0)
 
+ #ifdef RENDER_GLES
+        if (g_vao == 0) glGenVertexArrays(1, &g_vao);
+        glBindVertexArray(g_vao);
+ #endif
 	SETUP_ATTRIBS( 0 );
 
 	CHECK_GL_ERRORS;
@@ -327,6 +334,12 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 		if (loc >= 0)
 			glDisableVertexAttribArray( loc );
 	}
+
+	CHECK_GL_ERRORS;
+
+ #ifdef RENDER_GLES
+    glBindVertexArray(0);
+ #endif
 
 	CHECK_GL_ERRORS;
 
